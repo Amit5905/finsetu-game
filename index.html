@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎮 Finsetu Resolution Challenge</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+      min-height: 100vh;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: white;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ───── LOADING SCREEN ───── */
+    #loading-screen {
+      position: fixed; inset: 0;
+      background: linear-gradient(135deg, #0a0a1a, #1a0a2e);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 1000; gap: 18px;
+    }
+    .loader {
+      width: 56px; height: 56px;
+      border: 4px solid rgba(0,255,200,0.2);
+      border-top: 4px solid #00ffc8;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ───── GAME CONTAINER ───── */
+    #game-container { position: relative; width: 100vw; height: 100vh; display: none; }
+    #game-canvas    { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+    /* Camera preview (top-left) */
+    #video-preview {
+      position: absolute; top: 12px; left: 12px;
+      width: 180px; height: 135px;
+      border-radius: 14px;
+      border: 2px solid #00ffc8;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror */
+      z-index: 10;
+      box-shadow: 0 0 20px rgba(0,255,200,0.4);
+    }
+    #input-video { display: none; }
+
+    /* HUD top-right */
+    #hud {
+      position: absolute; top: 12px; right: 14px;
+      text-align: right; z-index: 10;
+    }
+    .score-text { font-size: 26px; font-weight: bold; color: #00ffc8; }
+
+    /* Status bottom-left of preview */
+    #status-bar {
+      position: absolute; top: 155px; left: 12px; z-index: 10;
+      font-size: 12px; color: #00ffc8;
+      background: rgba(0,0,0,0.6); padding: 4px 10px;
+      border-radius: 20px; border: 1px solid #00ffc830;
+    }
+
+    /* Mode indicator bottom-right of HUD */
+    #mode-indicator {
+      position: absolute; top: 80px; right: 14px; z-index: 10;
+      font-size: 12px; color: #aaa;
+      background: rgba(0,0,0,0.5); padding: 4px 10px;
+      border-radius: 20px;
+    }
+
+    /* Question box bottom center */
+    #question-box {
+      position: absolute; bottom: 18px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      border: 2px solid #00ffc8;
+      border-radius: 18px;
+      padding: 14px 28px;
+      text-align: center;
+      max-width: min(85%, 700px);
+      z-index: 10;
+      backdrop-filter: blur(12px);
+    }
+    .q-num  { font-size: 12px; color: #888; margin-bottom: 5px; }
+    .q-text { font-size: clamp(14px, 2vw, 20px); line-height: 1.5; font-weight: 600; }
+
+    /* ───── FEEDBACK TOAST ───── */
+    .toast {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.92);
+      font-size: clamp(18px, 3vw, 28px);
+      font-weight: bold;
+      padding: 18px 36px;
+      border-radius: 20px;
+      z-index: 600;
+      text-align: center;
+      animation: popFade 2s ease forwards;
+      pointer-events: none;
+    }
+    @keyframes popFade {
+      0%   { opacity: 0; transform: translate(-50%,-60%) scale(0.8); }
+      15%  { opacity: 1; transform: translate(-50%,-50%) scale(1.05); }
+      75%  { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%,-42%) scale(0.95); }
+    }
+
+    /* ───── END SCREEN ───── */
+    #end-screen {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.92);
+      flex-direction: column; align-items: center; justify-content: center;
+      z-index: 2000; gap: 18px;
+      animation: fadeIn 0.5s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .end-emoji  { font-size: 64px; }
+    .end-title  { font-size: clamp(28px, 5vw, 48px); font-weight: bold; color: #FFD700; }
+    .end-score  { font-size: clamp(48px, 8vw, 80px); font-weight: bold; color: #00ffc8; }
+    .end-msg    { font-size: clamp(14px, 2vw, 20px); color: #aaa; }
+    .restart-btn {
+      margin-top: 10px;
+      background: linear-gradient(135deg, #00ffc8, #0088ff);
+      border: none; border-radius: 50px;
+      padding: 14px 44px; font-size: clamp(16px,2vw,20px);
+      color: white; cursor: pointer; font-weight: bold;
+      box-shadow: 0 4px 20px rgba(0,200,255,0.4);
+      transition: transform 0.15s;
+    }
+    .restart-btn:hover { transform: scale(1.05); }
+
+    /* ───── HOLD RING KEY ───── */
+    #hint-bar {
+      position: absolute; bottom: 90px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px; color: #888;
+      background: rgba(0,0,0,0.4); padding: 4px 14px;
+      border-radius: 20px; z-index: 10; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ LOADING ══════════════ -->
+<div id="loading-screen">
+  <div style="font-size:52px">🎮</div>
+  <h1 style="font-size:clamp(20px,4vw,30px);color:#00ffc8">Finsetu Resolution Challenge</h1>
+  <div class="loader"></div>
+  <p id="loading-text" style="color:#aaa;font-size:15px">कैमरा शुरू हो रहा है…</p>
+  <p style="color:#555;font-size:12px">"Allow" दबाएँ → game तुरंत शुरू!</p>
+</div>
+
+<!-- ══════════════ GAME ══════════════ -->
+<div id="game-container">
+  <video id="video-preview" autoplay playsinline muted></video>
+  <video id="input-video"   autoplay playsinline muted></video>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="hud">
+    <div class="score-text">🏆 <span id="score-display">0</span></div>
+    <div style="color:#aaa;font-size:13px">सवाल <span id="q-num">1</span>/6</div>
+  </div>
+
+  <div id="status-bar">👋 हाथ दिखाएं</div>
+  <div id="mode-indicator">📷 Camera</div>
+  <div id="hint-bar">सही ball पर 0.7 सेकंड रोकें ✋</div>
+
+  <div id="question-box">
+    <div class="q-num" id="q-label">प्रश्न 1 / 6</div>
+    <div class="q-text" id="q-display">लोड हो रहा है…</div>
+  </div>
+</div>
+
+<!-- ══════════════ END ══════════════ -->
+<div id="end-screen">
+  <div class="end-emoji" id="end-emoji">🎉</div>
+  <div class="end-title">आपका स्कोर</div>
+  <div class="end-score" id="final-score">0/6</div>
+  <div class="end-msg" id="end-msg"></div>
+  <button class="restart-btn" onclick="restartGame()">🔄 फिर से खेलें</button>
+</div>
+
+<!-- ══════════════ MEDIAPIPE CDN ══════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ════════════════════════════════════════
+//  QUESTIONS  (edit freely!)
+// ════════════════════════════════════════
+const QUESTIONS = [
+  {
+    q: "Finsetu का मुख्य उद्देश्य क्या है?",
+    opts: ["वित्तीय विवाद सुलझाना", "लोन देना", "बैंक खोलना", "बीमा बेचना"],
+    ans: 0
+  },
+  {
+    q: "बैंकिंग शिकायत के लिए पहला कदम क्या है?",
+    opts: ["कोर्ट जाना", "बैंक से संपर्क करना", "पुलिस बुलाना", "सोशल मीडिया पर पोस्ट"],
+    ans: 1
+  },
+  {
+    q: "EMI का पूरा नाम क्या है?",
+    opts: ["Easy Money Install", "Equated Monthly Installment", "Equal Money Income", "Extra Monthly Interest"],
+    ans: 1
+  },
+  {
+    q: "वित्तीय साक्षरता का मतलब क्या है?",
+    opts: ["सिर्फ बचत करना", "पैसे छुपाना", "पैसे समझना व सही उपयोग करना", "केवल निवेश करना"],
+    ans: 2
+  },
+  {
+    q: "KYC का पूरा नाम क्या है?",
+    opts: ["Keep Your Cash", "Know Your Customer", "Key Your Code", "Keep Yearly Count"],
+    ans: 1
+  },
+  {
+    q: "Finsetu के ज़रिए विवाद कितने समय में सुलझता है?",
+    opts: ["10 साल", "5 साल", "कुछ दिनों में", "कभी नहीं"],
+    ans: 2
+  }
+];
+
+// ════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════
+const canvas   = document.getElementById('game-canvas');
+const ctx      = canvas.getContext('2d');
+let W = 0, H = 0;
+
+let qIndex     = 0;
+let score      = 0;
+let gameActive = false;
+let balls      = [];
+
+let handX = -1, handY = -1, fingerVisible = false;
+let mouseX = -1, mouseY = -1;
+let cameraMode = false;
+
+let holdTarget = null;
+let holdTimer  = 0;
+const HOLD_TIME = 0.7; // seconds
+
+let lastTS = 0;
+
+// ════════════════════════════════════════
+//  BALL CLASS
+// ════════════════════════════════════════
+const PALETTE = [
+  ['#ff6b6b','#c0392b'], ['#1abc9c','#0e8a6b'],
+  ['#3498db','#1a6fa0'], ['#9b59b6','#6c3483'],
+  ['#e67e22','#a85a0a'], ['#27ae60','#145a32']
+];
+
+class Ball {
+  constructor(x, y, label, idx, correct) {
+    this.x = x; this.y = y;
+    this.vx = (Math.random()-0.5)*1.4;
+    this.vy = (Math.random()-0.5)*1.4;
+    this.r  = Math.min(W,H) * 0.11;
+    this.label   = label;
+    this.idx     = idx;
+    this.correct = correct;
+    this.colors  = PALETTE[idx % PALETTE.length];
+    this.hovered = false;
+    this.holdPct = 0;
+    this.phase   = Math.random() * Math.PI * 2;
+  }
+
+  update(dt) {
+    this.x += this.vx;
+    this.y += this.vy;
+    const r = this.r, pad = 20;
+    if (this.x - r < pad)    { this.x = r + pad;    this.vx =  Math.abs(this.vx); }
+    if (this.x + r > W - pad){ this.x = W-r-pad;    this.vx = -Math.abs(this.vx); }
+    if (this.y - r < 70)     { this.y = 70 + r;     this.vy =  Math.abs(this.vy); }
+    if (this.y + r > H - 110){ this.y = H-110-r;    this.vy = -Math.abs(this.vy); }
+    this.phase += dt * 2.5;
+  }
+
+  draw() {
+    const pulse = 1 + Math.sin(this.phase) * 0.025;
+    const r = this.r * pulse;
+
+    // Glow when hovered
+    if (this.hovered) {
+      ctx.shadowBlur  = 35;
+      ctx.shadowColor = this.colors[0];
+    }
+
+    // Ball fill
+    const g = ctx.createRadialGradient(this.x - r*.28, this.y - r*.28, r*.08, this.x, this.y, r);
+    g.addColorStop(0, '#fff4');
+    g.addColorStop(0.3, this.colors[0]);
+    g.addColorStop(1,   this.colors[1]);
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI*2);
+    ctx.fillStyle = g;
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+
+    // Hover ring
+    if (this.hovered) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r+6, 0, Math.PI*2);
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Hold progress arc
+    if (this.holdPct > 0) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, r+12, -Math.PI/2, -Math.PI/2 + Math.PI*2*this.holdPct);
+      ctx.strokeStyle = '#00ffc8';
+      ctx.lineWidth   = 5;
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+    }
+
+    // Label (word-wrap)
+    const fs = Math.max(11, r * 0.27);
+    ctx.font = `bold ${fs}px 'Segoe UI', Arial`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+
+    const words  = this.label.split(' ');
+    const maxW   = r * 1.6;
+    let lines = [], cur = '';
+    for (const w of words) {
+      const test = cur ? cur+' '+w : w;
+      if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+      else cur = test;
+    }
+    lines.push(cur);
+
+    const lh = fs * 1.35;
+    const top = this.y - (lines.length-1)*lh/2;
+    lines.forEach((ln, i) => {
+      const ly = top + i*lh;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillText(ln, this.x+1, ly+1);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(ln, this.x, ly);
+    });
+  }
+
+  hit(px, py) {
+    return Math.hypot(px-this.x, py-this.y) < this.r;
+  }
+}
+
+// ════════════════════════════════════════
+//  SPEECH
+// ════════════════════════════════════════
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'hi-IN'; u.rate = 0.9; u.pitch = 1.0;
+  speechSynthesis.speak(u);
+}
+
+// ════════════════════════════════════════
+//  LOAD QUESTION
+// ════════════════════════════════════════
+function loadQuestion(i) {
+  if (i >= QUESTIONS.length) { endGame(); return; }
+  const q = QUESTIONS[i];
+  document.getElementById('q-display').textContent = q.q;
+  document.getElementById('q-label').textContent   = `प्रश्न ${i+1} / ${QUESTIONS.length}`;
+  document.getElementById('q-num').textContent     = i+1;
+  speak(q.q);
+
+  balls = [];
+  const n = q.opts.length;
+
+  // Distribute balls evenly in a 2×2 grid area
+  const positions = getPositions(n);
+  q.opts.forEach((opt, idx) => {
+    const [bx, by] = positions[idx];
+    balls.push(new Ball(bx, by, opt, idx, idx === q.ans));
+  });
+
+  holdTarget = null;
+  holdTimer  = 0;
+}
+
+function getPositions(n) {
+  const cols = 2, rows = Math.ceil(n/2);
+  const usableW = W * 0.72, usableH = H * 0.60;
+  const startX  = (W - usableW) / 2 + usableW / (cols*2);
+  const startY  = H * 0.14 + usableH / (rows*2);
+  const stepX   = usableW / cols;
+  const stepY   = usableH / rows;
+  const pos = [];
+  for (let i = 0; i < n; i++) {
+    const c = i % cols, r = Math.floor(i/cols);
+    const jx = (Math.random()-0.5)*40;
+    const jy = (Math.random()-0.5)*20;
+    pos.push([startX + c*stepX + jx, startY + r*stepY + jy]);
+  }
+  return pos;
+}
+
+// ════════════════════════════════════════
+//  ANSWER
+// ════════════════════════════════════════
+function selectAnswer(ball) {
+  gameActive = false;
+  holdTarget = null;
+
+  if (ball.correct) {
+    score++;
+    document.getElementById('score-display').textContent = score;
+    speak('शाबाश! सही जवाब!');
+    toast('✅ शाबाश! सही जवाब!', '#00ffc8');
+  } else {
+    const correctTxt = QUESTIONS[qIndex].opts[QUESTIONS[qIndex].ans];
+    speak('गलत! सही जवाब था: ' + correctTxt);
+    toast('❌ गलत! सही: ' + correctTxt, '#ff6b6b');
+  }
+
+  // Highlight correct ball momentarily
+  balls[QUESTIONS[qIndex].ans].holdPct = 1;
+
+  setTimeout(() => {
+    qIndex++;
+    if (qIndex < QUESTIONS.length) { gameActive = true; loadQuestion(qIndex); }
+    else endGame();
+  }, 2100);
+}
+
+function toast(msg, color) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.style.color  = color;
+  el.style.border = `2px solid ${color}`;
+  el.textContent  = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2100);
+}
+
+// ════════════════════════════════════════
+//  END GAME
+// ════════════════════════════════════════
+function endGame() {
+  gameActive = false;
+  const pct = score / QUESTIONS.length;
+  let emoji = '📚', msg = 'थोड़ा और पढ़ो, फिर खेलो!';
+  if (pct === 1)      { emoji = '🌟'; msg = 'Perfect! अद्भुत प्रदर्शन!'; }
+  else if (pct >= .8) { emoji = '🎊'; msg = 'बहुत अच्छे! लगभग परफेक्ट!'; }
+  else if (pct >= .5) { emoji = '👍'; msg = 'अच्छे! और सीखते रहो!'; }
+
+  document.getElementById('end-emoji').textContent   = emoji;
+  document.getElementById('final-score').textContent = `${score}/${QUESTIONS.length}`;
+  document.getElementById('end-msg').textContent     = msg;
+  document.getElementById('end-screen').style.display = 'flex';
+  speak(`आपका स्कोर ${score} में से ${QUESTIONS.length} है। ${msg}`);
+}
+
+function restartGame() {
+  qIndex = 0; score = 0; gameActive = true;
+  document.getElementById('score-display').textContent = '0';
+  document.getElementById('end-screen').style.display  = 'none';
+  loadQuestion(0);
+}
+
+// ════════════════════════════════════════
+//  GAME LOOP
+// ════════════════════════════════════════
+function update(dt) {
+  if (!gameActive) return;
+
+  // Active pointer
+  let ax = -1, ay = -1;
+  if (cameraMode && fingerVisible) { ax = handX; ay = handY; }
+  else if (!cameraMode)            { ax = mouseX; ay = mouseY; }
+
+  balls.forEach(b => { b.update(dt); b.hovered = false; b.holdPct = 0; });
+
+  if (ax >= 0 && ay >= 0) {
+    let hovered = null;
+    for (const b of balls) { if (b.hit(ax, ay)) { hovered = b; break; } }
+
+    if (hovered) {
+      hovered.hovered = true;
+      if (holdTarget === hovered) {
+        holdTimer += dt;
+        hovered.holdPct = Math.min(holdTimer / HOLD_TIME, 1);
+        if (holdTimer >= HOLD_TIME) selectAnswer(hovered);
+      } else {
+        holdTarget = hovered;
+        holdTimer  = 0;
+      }
+    } else {
+      holdTarget = null;
+      holdTimer  = 0;
+    }
+  } else {
+    holdTarget = null;
+    holdTimer  = 0;
+  }
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Starfield BG
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle radial glow center
+  const rg = ctx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.max(W,H)*0.7);
+  rg.addColorStop(0,   'rgba(100,0,200,0.08)');
+  rg.addColorStop(0.5, 'rgba(0,100,200,0.04)');
+  rg.addColorStop(1,   'transparent');
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, W, H);
+
+  balls.forEach(b => b.draw());
+
+  // Draw cursor/finger dot
+  let ax = -1, ay = -1;
+  if (cameraMode && fingerVisible) { ax = handX; ay = handY; }
+  else if (!cameraMode)            { ax = mouseX; ay = mouseY; }
+
+  if (ax >= 0 && ay >= 0) {
+    ctx.beginPath();
+    ctx.arc(ax, ay, 22, 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,255,200,0.6)';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(ax, ay, 5, 0, Math.PI*2);
+    ctx.fillStyle = '#00ffc8';
+    ctx.fill();
+  }
+}
+
+function loop(ts) {
+  const dt = Math.min((ts - lastTS) / 1000, 0.05);
+  lastTS = ts;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ════════════════════════════════════════
+//  MOUSE / TOUCH
+// ════════════════════════════════════════
+function setupPointer() {
+  canvas.addEventListener('mousemove', e => {
+    const r = canvas.getBoundingClientRect();
+    mouseX = (e.clientX - r.left) * (W / r.width);
+    mouseY = (e.clientY - r.top)  * (H / r.height);
+  });
+  canvas.addEventListener('mouseleave', () => { mouseX = -1; mouseY = -1; });
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    mouseX = (e.touches[0].clientX - r.left) * (W / r.width);
+    mouseY = (e.touches[0].clientY - r.top)  * (H / r.height);
+  }, { passive: false });
+  canvas.addEventListener('touchend', () => { mouseX = -1; mouseY = -1; });
+}
+
+// ════════════════════════════════════════
+//  CAMERA + MEDIAPIPE
+// ════════════════════════════════════════
+async function startCamera() {
+  const preview = document.getElementById('video-preview');
+  const hidden  = document.getElementById('input-video');
+
+  try {
+    document.getElementById('loading-text').textContent = '📷 Camera permission माँग रहे हैं…';
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, facingMode: 'user' }
+    });
+    preview.srcObject = stream;
+    hidden.srcObject  = stream;
+    await Promise.all([
+      new Promise(r => { preview.onloadedmetadata = r; }),
+      new Promise(r => { hidden.onloadedmetadata  = r; })
+    ]);
+    cameraMode = true;
+    document.getElementById('mode-indicator').textContent = '📷 Camera Mode';
+    document.getElementById('loading-text').textContent   = 'Hand tracking लोड हो रहा है…';
+    await setupMediaPipe(hidden);
+    return true;
+  } catch (err) {
+    console.warn('Camera error – falling back to mouse:', err);
+    preview.style.display = 'none';
+    cameraMode = false;
+    document.getElementById('mode-indicator').textContent = '🖱️ Mouse Mode';
+    document.getElementById('status-bar').textContent     = '🖱️ माउस घुमाएं';
+    document.getElementById('status-bar').style.color    = '#ffaa00';
+    document.getElementById('hint-bar').textContent      = 'सही ball पर 0.7 सेकंड माउस रोकें 🖱️';
+    return false;
+  }
+}
+
+async function setupMediaPipe(videoEl) {
+  if (typeof Hands === 'undefined') {
+    console.warn('MediaPipe Hands not loaded – using mouse fallback');
+    cameraMode = false;
+    return;
+  }
+
+  const hands = new Hands({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${f}`
+  });
+  hands.setOptions({
+    maxNumHands: 1,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.65,
+    minTrackingConfidence: 0.5
+  });
+  hands.onResults(results => {
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+      const tip = results.multiHandLandmarks[0][8]; // index fingertip
+      handX = (1 - tip.x) * W;   // mirror X
+      handY = tip.y * H;
+      fingerVisible = true;
+      document.getElementById('status-bar').textContent = '✋ हाथ दिख रहा है';
+      document.getElementById('status-bar').style.color = '#00ffc8';
+    } else {
+      fingerVisible = false;
+      document.getElementById('status-bar').textContent = '👋 हाथ दिखाएं';
+      document.getElementById('status-bar').style.color = '#ffaa00';
+    }
+  });
+
+  // Send frames
+  async function sendFrame() {
+    if (videoEl.readyState >= 2) {
+      try { await hands.send({ image: videoEl }); } catch (_) {}
+    }
+    requestAnimationFrame(sendFrame);
+  }
+  sendFrame();
+}
+
+// ════════════════════════════════════════
+//  RESIZE
+// ════════════════════════════════════════
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+
+// ════════════════════════════════════════
+//  INIT  — AUTO-START
+// ════════════════════════════════════════
+async function init() {
+  resize();
+  window.addEventListener('resize', () => {
+    resize();
+    if (gameActive) loadQuestion(qIndex);
+  });
+  setupPointer();
+
+  // Auto-start camera (no button click needed!)
+  await startCamera();
+
+  // Hide loading, show game
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('game-container').style.display = 'block';
+
+  // Begin
+  gameActive = true;
+  loadQuestion(0);
+  lastTS = performance.now();
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
